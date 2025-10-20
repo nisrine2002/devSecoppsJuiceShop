@@ -1,0 +1,113 @@
+name: "OWASP ZAP DAST Scan"
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  zap-scan:
+    name: OWASP ZAP Dynamic Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Start Juice Shop in background
+      run: |
+        echo "Starting Juice Shop..."
+        npm start &
+        echo $! > juice-shop.pid
+        echo "Waiting for application to start..."
+        sleep 90
+
+    - name: Wait for application to be ready
+      run: |
+        echo "Checking if application is responding..."
+        for i in {1..30}; do
+          if curl -f http://localhost:3000 > /dev/null 2>&1; then
+            echo "✅ Application is ready!"
+            exit 0
+          fi
+          echo "⏳ Waiting... attempt $i/30"
+          sleep 10
+        done
+        echo "❌ Application did not start in time"
+        exit 1
+
+    - name: Run OWASP ZAP Baseline Scan
+      uses: zaproxy/action-baseline@v0.12.0
+      with:
+        target: 'http://localhost:3000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a'
+        allow_issue_writing: false
+        fail_action: false
+
+    - name: Create ZAP reports directory
+      if: always()
+      run: mkdir -p zap-reports
+
+    - name: Copy ZAP reports
+      if: always()
+      run: |
+        if [ -f report_html.html ]; then
+          cp report_html.html zap-reports/zap-report.html
+        fi
+        if [ -f report_json.json ]; then
+          cp report_json.json zap-reports/zap-report.json
+        fi
+        if [ -f report_md.md ]; then
+          cp report_md.md zap-reports/zap-report.md
+        fi
+
+    - name: Upload ZAP HTML Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-html-report
+        path: zap-reports/zap-report.html
+
+    - name: Upload ZAP JSON Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-json-report
+        path: zap-reports/zap-report.json
+
+    - name: Upload ZAP Markdown Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-markdown-report
+        path: zap-reports/zap-report.md
+
+    - name: Upload all ZAP reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-scan-reports
+        path: |
+          report_html.html
+          report_json.json
+          report_md.md
+
+    - name: Stop Juice Shop
+      if: always()
+      run: |
+        if [ -f juice-shop.pid ]; then
+          kill $(cat juice-shop.pid) || true
+          rm juice-shop.pid
+        fi
+        # Also kill any remaining node processes
+        pkill -f "npm start" || true
+        pkill -f "node.*juice-shop" || true
