@@ -17,7 +17,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'  # ✅ CHANGED FROM 18 TO 20!
+        node-version: '20'
 
     - name: Install dependencies
       run: |
@@ -60,17 +60,26 @@ jobs:
           ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py -t http://localhost:3000 \
           -r zap-report.html \
-          -J zap-report.json \
-          -w zap-report.md || echo "ZAP scan completed with findings"
+          -x zap-report.xml \
+          -J zap-report.json || echo "ZAP scan completed with findings"
 
     - name: Check generated reports
       if: always()
       run: |
         echo "📊 Checking for generated reports..."
-        ls -la *.html *.json *.md 2>/dev/null || echo "Some reports may be missing"
-        if [ -f zap-report.html ]; then echo "✅ HTML report found"; fi
-        if [ -f zap-report.json ]; then echo "✅ JSON report found"; fi
-        if [ -f zap-report.md ]; then echo "✅ Markdown report found"; fi
+        ls -la zap-report.* 2>/dev/null || echo "Checking reports..."
+        if [ -f zap-report.html ]; then 
+          echo "✅ HTML report found"
+          ls -lh zap-report.html
+        fi
+        if [ -f zap-report.xml ]; then 
+          echo "✅ XML report found"
+          ls -lh zap-report.xml
+        fi
+        if [ -f zap-report.json ]; then 
+          echo "✅ JSON report found"
+          ls -lh zap-report.json
+        fi
 
     - name: Upload ZAP HTML Report
       uses: actions/upload-artifact@v4
@@ -78,6 +87,14 @@ jobs:
       with:
         name: zap-html-report
         path: zap-report.html
+        if-no-files-found: warn
+
+    - name: Upload ZAP XML Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-xml-report
+        path: zap-report.xml
         if-no-files-found: warn
 
     - name: Upload ZAP JSON Report
@@ -88,12 +105,12 @@ jobs:
         path: zap-report.json
         if-no-files-found: warn
 
-    - name: Upload ZAP Markdown Report
+    - name: Upload All ZAP Reports
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: zap-markdown-report
-        path: zap-report.md
+        name: zap-all-reports
+        path: zap-report.*
         if-no-files-found: warn
 
     - name: Upload application logs
