@@ -1,0 +1,4 @@
+fileignoreconfig:
+- filename: .github/workflows/owasp-zap-dast.yml
+  checksum: 770ae509e5bc7c7b9fa900862e5850eb71bba7ef9058fb7c7b422d960756e756
+version: "1.0"
