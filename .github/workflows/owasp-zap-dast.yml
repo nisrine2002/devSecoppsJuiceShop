@@ -25,76 +25,42 @@ jobs:
         npm install
         echo "✅ Dependencies installed"
 
-    - name: Start Juice Shop application
+    - name: Start Juice Shop in background
       run: |
         echo "🚀 Starting Juice Shop..."
-        nohup npm start > juice-shop.log 2>&1 &
+        npm start > juice-shop.log 2>&1 &
         echo $! > juice-shop.pid
-        echo "Application PID: $(cat juice-shop.pid)"
-        echo "⏳ Waiting 2 minutes for application to fully start..."
+        echo "⏳ Waiting 2 minutes for application to start..."
         sleep 120
 
     - name: Verify application is running
       run: |
-        echo "🔍 Checking if application is responding..."
+        echo "🔍 Verifying application is accessible..."
         for i in {1..30}; do
           if curl -f http://localhost:3000 > /dev/null 2>&1; then
-            echo "✅ Application is ready on http://localhost:3000"
-            curl -I http://localhost:3000
+            echo "✅ Application is ready!"
             exit 0
           fi
-          echo "⏳ Attempt $i/30 - waiting 10 seconds..."
-          sleep 10
+          echo "⏳ Waiting... attempt $i/30"
+          sleep 5
         done
         echo "❌ Application failed to start"
-        echo "📄 Application logs:"
-        cat juice-shop.log || echo "No logs available"
+        cat juice-shop.log
         exit 1
 
     - name: Run OWASP ZAP Baseline Scan
-      continue-on-error: true
-      run: |
-        echo "🔍 Starting ZAP scan..."
-        docker pull ghcr.io/zaproxy/zaproxy:stable
-        docker run --network="host" -v $(pwd):/zap/wrk/:rw \
-          ghcr.io/zaproxy/zaproxy:stable \
-          zap-baseline.py -t http://localhost:3000 \
-          -r zap-report.html \
-          -x zap-report.xml \
-          -J zap-report.json || echo "ZAP scan completed with findings"
-
-    - name: Check generated reports
-      if: always()
-      run: |
-        echo "📊 Checking for generated reports..."
-        ls -la zap-report.* 2>/dev/null || echo "Checking reports..."
-        if [ -f zap-report.html ]; then 
-          echo "✅ HTML report found"
-          ls -lh zap-report.html
-        fi
-        if [ -f zap-report.xml ]; then 
-          echo "✅ XML report found"
-          ls -lh zap-report.xml
-        fi
-        if [ -f zap-report.json ]; then 
-          echo "✅ JSON report found"
-          ls -lh zap-report.json
-        fi
+      uses: zaproxy/action-baseline@v0.12.0
+      with:
+        target: 'http://localhost:3000'
+        allow_issue_writing: false
+        fail_action: false
 
     - name: Upload ZAP HTML Report
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: zap-html-report
-        path: zap-report.html
-        if-no-files-found: warn
-
-    - name: Upload ZAP XML Report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: zap-xml-report
-        path: zap-report.xml
+        path: report_html.html
         if-no-files-found: warn
 
     - name: Upload ZAP JSON Report
@@ -102,7 +68,15 @@ jobs:
       if: always()
       with:
         name: zap-json-report
-        path: zap-report.json
+        path: report_json.json
+        if-no-files-found: warn
+
+    - name: Upload ZAP Markdown Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-markdown-report
+        path: report_md.md
         if-no-files-found: warn
 
     - name: Upload All ZAP Reports
@@ -110,7 +84,10 @@ jobs:
       if: always()
       with:
         name: zap-all-reports
-        path: zap-report.*
+        path: |
+          report_html.html
+          report_json.json
+          report_md.md
         if-no-files-found: warn
 
     - name: Upload application logs
@@ -119,7 +96,6 @@ jobs:
       with:
         name: application-logs
         path: juice-shop.log
-        if-no-files-found: warn
 
     - name: Stop Juice Shop
       if: always()
@@ -131,4 +107,3 @@ jobs:
         fi
         pkill -f "npm start" || true
         pkill -f "node" || true
-        echo "✅ Cleanup completed"
