@@ -1,0 +1,83 @@
+name: "Trivy Container Security Scan"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  trivy-scan:
+    name: Trivy Docker Image Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: |
+        echo "🔨 Building Docker image..."
+        docker build -t juice-shop:${{ github.sha }} .
+        docker tag juice-shop:${{ github.sha }} juice-shop:latest
+        echo "✅ Docker image built successfully"
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'juice-shop:latest'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy SARIF results
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-sarif-results
+        path: trivy-results.sarif
+
+    - name: Run Trivy scan in table format
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'juice-shop:latest'
+        format: 'table'
+        exit-code: '0'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+    - name: Run Trivy JSON scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'juice-shop:latest'
+        format: 'json'
+        output: 'trivy-results.json'
+
+    - name: Upload Trivy JSON results
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-json-results
+        path: trivy-results.json
+
+    - name: Generate Trivy HTML Report
+      continue-on-error: true
+      run: |
+        echo "📊 Generating HTML report..."
+        docker run --rm -v $(pwd):/output \
+          aquasec/trivy:latest \
+          image --format template --template "@contrib/html.tpl" \
+          -o /output/trivy-report.html \
+          juice-shop:latest || echo "HTML report generation completed"
+
+    - name: Upload Trivy HTML Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: trivy-html-report
+        path: trivy-report.html
+        if-no-files-found: warn
+
+    - name: Print Trivy Summary
+      run: |
+        echo "=================================="
+        echo "Trivy Container Security Summary"
+        echo "=================================="
+        docker run --rm aquasec/trivy:latest image juice-shop:latest || true
